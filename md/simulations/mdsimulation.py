@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import pylab as pb
+import math
 
 class NaiveSimulation(object):
     """A base class for an MD simulation"""
@@ -8,28 +10,29 @@ class NaiveSimulation(object):
     # creates an instance of a simulation class
     def __init__(self, name, config):
         # configuration
+        np.random.seed(150)                     # RNG for velocities/positions
         self.name        = name
         self.config      = config
         self.integration = config['integration']
         # environment
         self.ndim        = int(config['ndim'])
         self.L           = float(config['L'])
-        self.temperature = float(config['temperature'])
-        self.iniTemp     = float(config['iniTemp'])
         # time
         self.steps       = 0
+        self.samplesteps = 0
         self.t           = 0.0
         self.dt          = float(config['dt'])
         self.dtsq        = self.dt ** 2
-        self.sampletime  = float(config['sampletime'])
+        self.sampleint   = float(config['sampleint'])
         self.relaxtime   = float(config['relaxtime'])
         self.runtime     = float(config['runtime'])
         self.tArray      = np.array([self.t])
+        self.sampleTArray= np.array([])
         #objects
         self.N           = int(config['N'])
-        self.pos         = np.zeros(self.ndim, self.N)
-        self.vel         = np.zeros(self.ndim, self.N)
-        self.acc         = np.zeros(self.ndim, self.N)
+        self.pos         = np.zeros([self.ndim, self.N])
+        self.vel         = np.zeros([self.ndim, self.N])
+        self.acc         = np.zeros([self.ndim, self.N])
         self.velArray    = np.array([])
         self.posArray    = np.array([])
         # observables
@@ -46,7 +49,8 @@ class NaiveSimulation(object):
 
     # randomizes velocities as (rand() - 1/2) * L
     def randomVel(self):
-        self.v = (np.random.random([self.ndim, self.N]) - 0.5) * self.L
+        self.v  = (np.random.random([self.ndim, self.N]) - 0.5) * self.L
+        self.v *= math.sqrt(self.iniTemp)
 
     # zeros total momentum along each dimension
     def zeroMomentum(self):
@@ -128,40 +132,57 @@ class NaiveSimulation(object):
     # evolves the system a specified amount of time
     def evolve(self, time):
         steps = int(abs(time/self.dt))
+        self.acc = self.force()
         for istep in xrange(steps):
+            self.integrate()
             self.t      += self.dt
             self.tArray  = np.append(self.tArray, self.t)
-            if (istep % self.sampletime == 0):
+            if (istep % self.sampleint == 0):
                 self.recordObservables()
+                self.sampleTArray = np.append(self.sampleTArray, self.t)
+                self.samplesteps += 1
             T = self.temp()
             self.tempArray  = np.append(self.tempArray, T)
             self.tempAcc   += T
             self.tempsqAcc += T**2
             self.steps     += 1
 
-    def resetStatistics(self):
-        self.steps  = 0
-        self.posArray = np.array([])
-        self.velArray = np.array([])
-        self.resetObservables()
-
     def reverseTime(self):
         self.dt = -self.dt
 
-    def makePlots(self):
+
+    # STATISTICS
+    def resetObservales(self):
         pass
+
+    def resetStatistics(self):
+        self.steps       = 0
+        self.samplesteps = 0
+        self.sampleTArray= np.array([])
+        self.posArray    = np.array([])
+        self.velArray    = np.array([])
+        self.enArray     = np.array([])
+        self.t           = 0.0
+        self.tempAcc     = 0.0
+        self.tempsqAcc   = 0.0
+        self.resetObservables()
+
+    def meanTemp(self):
+        return self.tempAcc / self.steps
+
+    def meanTempsq(self):
+        return self.tempscAcc / self.steps
+
+    def meanEn(self):
+        return self.enArray.mean()
+
+    def stdEn(self):
+        return self.enArray.std()
+
+    # OUTPUT
 
     def showPlots(self):
-        pass
-
-    # TODO maybe put in a separate script?
-    def runSimulation(self, runtime = 0.0):
-        if runtime == 0.0: runtime = self.runtime
-        self.initialize()
-        self.evolve(self.relaxtime)
-        self.resetStatistics()
-        self.evolve(runtime)
-        self.makePlots()
+        pb.show()
 
     def __str__(self):
         return ("%s MD simulation" % self.name)

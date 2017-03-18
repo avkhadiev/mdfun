@@ -11,13 +11,14 @@ class MCMetropolis(object):
         self.name       = name
         self.config     = config
         if 'npoints'    not in config.keys(): config['npoints'] = 100
+        if 'nrlxsteps'  not in config.keys(): config['nrlxsteps'] = 50
         if 'stepP'      not in config.keys(): config['stepP']   = 0.01
         if 'stepX'      not in config.keys(): config['stepX']   = 0.01
         if 'L'          not in config.keys(): config['L']       = 1.0
         if 'omegasq'    not in config.keys(): config['omegasq'] = 1.0
+        if 'enMax'      not in config.keys(): config['enMax']   = 100
         if 'tInt'       not in config.keys(): config['tInt']    = 0.01
         if 'ntimes'     not in config.keys(): config['ntimes']  = 200
-        if 'nrlxsteps'  not in config.keys(): config['nrlxsteps'] = 50
         if (config['debug'] == 'True'):
             print "SHO Monte-Carlo may have modified the configuration."
             print "The current configuration is:"
@@ -29,6 +30,7 @@ class MCMetropolis(object):
         self.stepX      = float(config['stepX'])    # relative to ...
         self.L          = float(config['L'])        # size of the box
         self.omegasq    = float(config['omegasq'])  # to calculate period T
+        self.enMax      = float(config['enMax'])    # max energy / kT
         self.tInt       = float(config['tInt'])     # calculate for every  t/T
         self.ntimes     = int(config['ntimes'])     # tot time = tInt * ntimes
         self.points     = np.array([])              # array of sampled points

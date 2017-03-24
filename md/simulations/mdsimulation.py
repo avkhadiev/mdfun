@@ -10,10 +10,11 @@ class NaiveSimulation(object):
     # creates an instance of a simulation class
     def __init__(self, name, config):
         # configuration
-        np.random.seed(150)                     # RNG for velocities/positions
+        np.random.seed()                          # RNG for velocities/positions
         self.name        = name
         self.config      = config
         self.integration = config['integration']
+        self.batchmode   = config['batchmode']    # don't show
         # environment
         self.ndim        = int(config['ndim'])
         self.L           = float(config['L'])
@@ -37,7 +38,7 @@ class NaiveSimulation(object):
         self.posArray    = np.array([])
         # observables
         self.iniTemp     = float(config['iniTemp'])
-        self.tempArray   = np.array([self.iniTemp])
+        self.tempArray   = np.array([])
         self.tempAcc     = 0.0
         self.tempsqAcc   = 0.0
         self.enArray     = np.array([])
@@ -49,8 +50,9 @@ class NaiveSimulation(object):
 
     # randomizes velocities as (rand() - 1/2) * L
     def randomVel(self):
-        self.v  = (np.random.random([self.ndim, self.N]) - 0.5) * self.L
-        self.v *= math.sqrt(self.iniTemp)
+        self.vel  = (np.random.random([self.ndim, self.N]) - 0.5) * self.L
+        # T = self.temp()
+        # self.vel *= math.sqrt( self.iniTemp / T )
 
     # zeros total momentum along each dimension
     def zeroMomentum(self):
@@ -141,10 +143,10 @@ class NaiveSimulation(object):
                 self.recordObservables()
                 self.sampleTArray = np.append(self.sampleTArray, self.t)
                 self.samplesteps += 1
-            T = self.temp()
-            self.tempArray  = np.append(self.tempArray, T)
-            self.tempAcc   += T
-            self.tempsqAcc += T**2
+                T = self.temp()
+                self.tempArray  = np.append(self.tempArray, T)
+                self.tempAcc   += T
+                self.tempsqAcc += T**2
             self.steps     += 1
 
     def reverseTime(self):
@@ -162,16 +164,17 @@ class NaiveSimulation(object):
         self.posArray    = np.array([])
         self.velArray    = np.array([])
         self.enArray     = np.array([])
+        self.tempArray   = np.array([])
         self.t           = 0.0
         self.tempAcc     = 0.0
         self.tempsqAcc   = 0.0
         self.resetObservables()
 
     def meanTemp(self):
-        return self.tempAcc / self.steps
+        return self.tempAcc / self.samplesteps
 
     def meanTempsq(self):
-        return self.tempscAcc / self.steps
+        return self.tempscAcc / self.samplesteps
 
     def meanEn(self):
         return self.enArray.mean()
@@ -183,6 +186,10 @@ class NaiveSimulation(object):
 
     def showPlots(self):
         pb.show()
+
+    # writeout observables to file
+    def writeObservables(self):
+        pass
 
     def __str__(self):
         return ("%s MD simulation" % self.name)

@@ -9,17 +9,21 @@ class SHO(NaiveSimulation):
     """A class for an MD simulation of a simple harmonic oscillator"""
 
     # creates an instance of a simulation class
-    def __init__(self, config):
+    # FIXME change to include customizable name?
+    def __init__(self, name, config):
         # general configs
-        name = "SHO"
         if 'N'          not in config.keys(): config['N']          = 1
         if 'ndim'       not in config.keys(): config['ndim']       = 1
         if 'L'          not in config.keys(): config['L']          = 1.0
-        if 'iniTemp'    not in config.keys(): config['iniTemp']    = 1.0
+        # temperature is specified as T / Tmax, where Tmax = 1/4 omegasq (L/2)^2
+        # (m = kB = 1)
+        if 'iniTemp'    not in config.keys(): config['iniTemp']    = 0.25
         if 'dt'         not in config.keys(): config['dt']         = 0.001
         if 'sampleint'  not in config.keys(): config['sampleint']  = 100
         if 'relaxtime'  not in config.keys(): config['relaxtime']  = 10.0
         if 'runtime'    not in config.keys(): config['runtime']    = 20.0
+        if 'batchmode'  not in config.keys(): config['batchmode']  = 'False'
+        if 'writeout'   not in config.keys(): config['writeout']   = 'False'
         if 'integration' not in config.keys():
             config['integration']='velocityVerlet'
         # SHO-specific configs
@@ -44,6 +48,7 @@ class SHO(NaiveSimulation):
         self.exVelArray   = np.array([])
         self.exKinEnArray = np.array([])
         self.exPotEnArray = np.array([])
+        self.tempMax      = 2 * 0.25 * self.omegasq * (self.L / 2)**2
         self.xmax         = 0.0
         self.pmax         = 0.0
         # x(t) = A exp( i omega t) + B exp( - i omega t)
@@ -53,10 +58,27 @@ class SHO(NaiveSimulation):
         # figure counter for plotting
         self.figures = 0
 
+    def randomPos(self):
+        # T/Tmax = iniTemp, where Tmax = 1/4 omegasq (L/2)^2
+        corr = math.sqrt( self.iniTemp )
+        if self.config['debug'] == 'True':
+            print "temperature scaling correction ", corr
+        self.pos = (np.random.random([self.ndim, self.N]) - 0.5) * self.L * corr
+
     # assigns initial velocities and positions
     def initialize(self):
         self.randomPos()
-        self.randomVel()
+        # initial velocity is determined by total energy + initial position
+        # FIXME only works in 1d
+        totEn = 0.5 * self.omegasq * (self.L / 2)**2 * self.iniTemp
+        self.vel[0][:] = np.array( [math.sqrt(2*(totEn - self.potEn()))] )
+        if self.config['debug'] == 'True':
+            print 'position after initialization', self.pos
+            print 'velocity after initialization', self.vel
+            print 'potential energy after initialization', self.potEn()
+            print 'kinetic energy after initialization',   self.kinEn()
+            print 'total energy from temperature scaling ', totEn
+            print 'instanteneous temperature after initialization ', self.temp()
 
     # save current conditions as initial for the exact solution
     def initializeExact(self):
@@ -126,72 +148,94 @@ class SHO(NaiveSimulation):
         pb.xlabel("dim %d" % dim1)
         pb.ylabel("dim %d" % dim2)
 
-    def plotTrajectories(self, num = 0, dim = 0):
+    def plotTrajectories(self, overlayExact = 0, num = 0, dim = 0):
         self.figures += 1
-        f, (ax1, ax2) = pb.subplots(2, sharex=True, sharey=True)
-        ax1.set_title("Trajectory, simulation (red) vs. exact (blue)")
-        for ax in (ax1, ax2):
-            ax.set_xlabel("t/T")
-            ax.set_ylabel("x/xmax")
+        pb.figure( self.figures )
+        pb.title("Trajectory, simulation (red) vs. exact (blue)")
+        pb.xlabel("t/T")
+        pb.ylabel("x/xmax")
+        pb.grid(True)
         x = np.reshape(self.posArray, [self.ndim, self.N, self.samplesteps])
-        ax1.plot(self.sampleTArray / self.T, x[dim][num][:] / self.xmax, 'r.-')
+        pb.plot(self.sampleTArray / self.T, x[dim][num][:] / self.xmax,
+                linestyle = 'None', marker = 'o', color = 'r')
         # plot exact solution
-        exX = np.reshape(self.exPosArray, [self.ndim, self.N, self.samplesteps])
-        ax2.plot(self.sampleTArray / self.T, exX[dim][num][:] / self.xmax, 'b')
-        # fine-ture figure, make subplots close to each other and hide x
-        # ticks for all but bottom plot.
-        f.subplots_adjust(hspace=0)
-        pb.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
-
+        if overlayExact:
+            exX = np.reshape(self.exPosArray, [self.ndim, self.N, self.samplesteps])
+            pb.plot(self.sampleTArray / self.T, exX[dim][num][:] / self.xmax,
+                    linestyle = '-', color = 'b')
+        # pb.savefig('trajectories.png')
 
     # plot phase space of a given number of particles for a given dimension
-    def plotPhaseSpace(self, dim=0):
+    def plotPhaseSpace(self, overlayExact = 0, dim=0):
         self.figures += 1
-        f, (ax1, ax2) = pb.subplots(2, sharex=True, sharey=True)
-        # title is above the top subplot
-        ax1.set_title("Phase space, simulation (red) vs. exact (blue)")
-        for ax in (ax1, ax2):
-            ax.set_xlabel("x/xmax")
-            ax.set_ylabel("p/pmax")
-            ax.axis('equal')
+        pb.figure( self.figures )
+        pb.title("Phase space, simulation (red) vs. exact (blue)")
+        pb.xlabel("x/xmax")
+        pb.ylabel("p/pmax")
+        pb.grid(True)
+        pb.axis('equal')
         x = np.reshape(self.posArray, [self.ndim, self.N, self.samplesteps])
         p = np.reshape(self.velArray, [self.ndim, self.N, self.samplesteps])
-        exX = np.reshape(self.exPosArray, [self.ndim, self.N, self.samplesteps])
-        exP = np.reshape(self.exVelArray, [self.ndim, self.N, self.samplesteps])
-        ax1.plot(x[dim][0][:]   / self.xmax,   p[dim][0][:] / self.pmax, "r.-")
-        ax2.plot(exX[dim][0][:] / self.xmax, exP[dim][0][:] / self.pmax, "b.")
-        # fine-ture figure, make subplots close to each other and hide x
-        # ticks for all but bottom plot.
-        f.subplots_adjust(hspace=0)
-        pb.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
-
+        pb.plot(x[dim][0][:]   / self.xmax,   p[dim][0][:] / self.pmax,
+                    linestyle = 'None', marker = 'o', color = 'r')
+        if overlayExact:
+            exX = np.reshape(self.exPosArray, [self.ndim, self.N, self.samplesteps])
+            exP = np.reshape(self.exVelArray, [self.ndim, self.N, self.samplesteps])
+            pb.plot(exX[dim][0][:] / self.xmax, exP[dim][0][:] / self.pmax,
+                    linestyle = '-', color = 'b')
+        # pb.savefig('phaseSpace.png')
 
     # plot temperature as a function of time
     def plotTemp(self):
-        pb.figure(3)
-        pb.plot(self.tArray, self.tempArray)
-        pb.xlabel("time")
-        pb.ylabel("temperature")
+        self.figures += 1
+        pb.figure( self.figures )
+        pb.plot(self.sampleTArray / self.T , self.tempArray / self.tempMax,
+                linestyle = '-', marker = 'o', color = 'r')
+        pb.axhline(y = self.meanTemp() / self.tempMax,
+                linestyle = '--',  color='b')
+        if self.config['debug'] == 'True':
+            pb.axhline(y = self.iniTemp,
+                    linestyle = '--',  color='k')
+        pb.title("Instanteneous temperature (red) and Mean Temperature (blue)")
+        pb.xlabel("t/T")
+        pb.ylabel("Inst Temp / Max Temp")
+        pb.grid(True)
 
     # plot energy as a function fo time
-    def plotPotEn(self):
+    def plotPotEn(self, overlayExact = 0):
         self.figures += 1
-        f, (ax1, ax2) = pb.subplots(2, sharex=True, sharey=True)
-        ax1.set_title("Potential energy, simulation (red) vs. exact (blue)")
-        for ax in (ax1, ax2):
-            ax.set_xlabel("t/T")
-            ax.set_ylabel("PE/PE_0")
-        ax1.plot(self.sampleTArray / self.T, self.potEnArray / self.iniEn, "r.-")
-        ax2.plot(self.sampleTArray / self.T, self.exPotEnArray.transpose() / self.iniEn, "b")
+        pb.figure( self.figures )
+        pb.title("Potential energy, simulation (red) vs. exact (blue)")
+        pb.xlabel("t/T")
+        pb.ylabel("PE/PE_0")
+        pb.grid(True)
+        pb.plot(self.sampleTArray / self.T, self.potEnArray / self.iniEn,
+                linestyle = 'None', marker = 'o', color = 'r')
+        if overlayExact:
+            pb.plot(self.sampleTArray / self.T, self.exPotEnArray.transpose() / self.iniEn,
+                    linestyle = '-', color = 'b')
+        # TODO fix to include absolute / customizable directories
+        # pb.savefig('potEn.png')
 
     def printResults(self):
         print "\nRESULTS \n"
-        print "time = %.3f\n"          % self.t
-        print "total energy = %.3f\n"  % self.en()
-        print "temperature = %.3f\n"   % self.temp()
+        print "time = %.4f\n"          % self.t
+        print "maximum possible temperature %.4f\n" % self.tempMax
         if (self.steps > 0):
-            print "mean energy %.3f\n" % self.meanEn()
-            print "std energy %.3f\n"  % self.stdEn()
+            print "mean energy %.4f\n" % self.meanEn()
+            print "std energy %.4f\n"  % self.stdEn()
+            print "mean temperature = %.4f\n"   % self.meanTemp()
+
+    # writeout observables to file
+    def writeObservables(self):
+        fname = self.name
+        np.savetxt('%s_%s.txt' % (fname, 'ken'),  self.kinEnArray  )
+        np.savetxt('%s_%s.txt' % (fname, 'pen'),  self.potEnArray  )
+        np.savetxt('%s_%s.txt' % (fname, 'en'),   self.enArray     )
+        np.savetxt('%s_%s.txt' % (fname, 'pos'),  self.posArray    )
+        np.savetxt('%s_%s.txt' % (fname, 'vel'),  self.velArray    )
+        np.savetxt('%s_%s.txt' % (fname, 'temp'), self.tempArray   )
+        np.savetxt('%s_%s.txt' % (fname, 'samT'), self.sampleTArray)
 
     def run(self, runtime = 0.0, relaxtime = 0.0):
         if runtime   == 0.0: runtime   = self.runtime
@@ -204,9 +248,14 @@ class SHO(NaiveSimulation):
         self.initializeExact()
         self.evolve( runtime )
         self.calculateExact()
-        self.printResults()
-        self.plotPotEn()
-        self.plotTrajectories()
-        self.plotPhaseSpace()
-        self.showPlots()
+        if self.config['batchmode'] == 'False':
+            self.printResults()
+            self.plotTemp()
+            self.plotPotEn(1)
+            self.plotTrajectories(1)
+            self.plotPhaseSpace(1)
+            self.showPlots()
+        if self.config['writeout'] == 'True':
+            self.writeObservables()
+
 

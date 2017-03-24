@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-from simulations import sho
+from simulations import sho, mcsho
+import numpy as np
 
 def parse(config_string):
     config = dict(item.split("=") for item in config_string.split(":"))
     return config
 
-
-def run( sim, config, verbose, debug ):
+def run( sim, name, config, verbose, debug ):
     if (verbose):
         print "Using the following configuration:\n"
         print( config )
@@ -15,10 +15,26 @@ def run( sim, config, verbose, debug ):
     config['verbose'] = str(verbose)
     config['debug']   = str(debug)
     if sim == "sho":
-        simulation = sho.SHO(config)
+        simulation = sho.SHO(name, config)
         simulation.run()
+    if sim == "mcsho":
+        simulation = mcsho.MCMetropolis(name)
+        MCNormTest( simulation )
     else:
         print "%s is an unknown simulation" % sim
+
+# test the MC sho
+# graph sampled x0, p0 points
+# graph the step size changes
+# calculate the normalization and print it
+def MCNormTest( simulation ):
+    simulation.sampleFirst()
+    while (simulation.newAcc < 100) or (simulation.trials < 100000):
+        simulation.evolve(30)
+        simulation.adjustRatio()
+    print "MC SHO test: normalization C_0 is ", simulation.normalization
+    np.savetxt('%s_%s.txt' % (simulation.name, "x0v0"), simulation.points)
+
 
 def time_reversal( sim, config, verbose, debug ):
     if (verbose):

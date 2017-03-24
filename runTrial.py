@@ -17,9 +17,6 @@ parser.add_option("-s", "--simulation",
 parser.add_option("-c", "--config",
         action="store", type="string", dest="config",
         help="specify configuration via ':'-separated string")
-parser.add_option("-o", "--fout",
-        action="store", type="string", dest="fout",
-        help="specify path to output file")
 parser.add_option("-d", "--debug",
         action="store_true", dest="debug",
         help="turn on debugging mode")
@@ -37,7 +34,6 @@ parser.set_defaults(name="newTrial",
             config  = ":".join([
                             "dt=0.001",
                             "integration=velocityVerlet"]),
-            fout    = "newTrial.txt",
             debug   = False,
             verbose = True,
             test    = False)

@@ -8,9 +8,9 @@
 
 from optparse import OptionParser
 parser = OptionParser()
-#parser.add_option("-n", "--name",
-#        action="store", type="string", dest="sim",
-#        help="specify simulation type")
+parser.add_option("-n", "--name",
+        action="store", type="string", dest="name",
+        help="specify simulation type")
 parser.add_option("-s", "--simulation",
         action="store", type="string", dest="sim",
         help="specify simulation type")
@@ -44,7 +44,7 @@ parser.set_defaults(name="newTrial",
 from md import simulate
 
 name       = options.name
-sim        = options.simulation
+sim        = options.sim
 verbose    = options.verbose
 debug      = options.debug
 test       = options.test
@@ -58,5 +58,5 @@ config = simulate.parse(options.config)
 if (test):
     simulate.time_reversal( sim, config, verbose, debug )
 else:
-    simulate.run( sim, config, verbose, debug )
+    simulate.run( sim, name, config, verbose, debug )
 

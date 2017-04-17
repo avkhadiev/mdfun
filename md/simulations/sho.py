@@ -18,12 +18,16 @@ class SHO(NaiveSimulation):
         # temperature is specified as T / Tmax, where Tmax = 1/4 omegasq (L/2)^2
         # (m = kB = 1)
         if 'iniTemp'    not in config.keys(): config['iniTemp']    = 0.25
-        if 'dt'         not in config.keys(): config['dt']         = 0.001
-        if 'sampleint'  not in config.keys(): config['sampleint']  = 100
-        if 'relaxtime'  not in config.keys(): config['relaxtime']  = 10.0
-        if 'runtime'    not in config.keys(): config['runtime']    = 20.0
         if 'batchmode'  not in config.keys(): config['batchmode']  = 'False'
         if 'writeout'   not in config.keys(): config['writeout']   = 'False'
+        if 'calculateExact' not in config.keys():
+            config['calculateExact'] == 'True'
+        if 'setInitial' not in config.keys():
+            config['setInitial'] = 'False'
+        else:
+            if ('x0' not in config.keys()) or ('p0' not in config.keys()):
+                config['x0'] = float(config['L']) / 4
+                config['p0'] = 0.0
         if 'integration' not in config.keys():
             config['integration']='velocityVerlet'
         # SHO-specific configs
@@ -34,6 +38,33 @@ class SHO(NaiveSimulation):
         self.omega = math.sqrt( self.omegasq )
         self.kinEnArray = np.array([])
         self.potEnArray = np.array([])
+        # maximum INSTANTENEOUS temperature
+        self.tempMax      = 2 * 0.25  * self.omegasq * (self.L / 2)**2
+        self.xmax         = 0.0
+        self.pmax         = 0.0
+        # x(t) = A exp( i omega t) + B exp( - i omega t)
+        self.A = 0.0 + 0.0j
+        self.B = 0.0 + 0.0j
+        self.T = 2 * math.pi / self.omega
+        # intervals are specified in units of the period, T
+        if 'relaxtime'  not in config.keys():
+            config['relaxtime'] = 1 * self.T
+        else:
+            config['relaxtime'] = float(config['relaxtime']) * self.T
+        if 'runtime'    not in config.keys():
+            config['runtime']   = 4 * self.T
+        else:
+            config['runtime'] = float(config['runtime']) * self.T
+        if 'dt'         not in config.keys():
+            config['dt']        = 0.001 * self.T
+        else:
+            config['dt'] = float(config['dt']) * self.T
+        if 'sampleint'  not in config.keys():
+            config['sampleint'] = 0.1 * self.T
+        else:
+            config['sampleint'] = float(config['sampleint']) * self.T
+        self.relaxtime = float( config['relaxtime'] )
+        self.runtime = float( config['runtime'] )
         if (config['debug'] == 'True'):
             print "SHO may have modified the configuration."
             print "The current configuration is:"
@@ -48,18 +79,13 @@ class SHO(NaiveSimulation):
         self.exVelArray   = np.array([])
         self.exKinEnArray = np.array([])
         self.exPotEnArray = np.array([])
-        self.tempMax      = 2 * 0.25 * self.omegasq * (self.L / 2)**2
-        self.xmax         = 0.0
-        self.pmax         = 0.0
-        # x(t) = A exp( i omega t) + B exp( - i omega t)
-        self.A = 0.0 + 0.0j
-        self.B = 0.0 + 0.0j
-        self.T = 2 * math.pi / self.omega
+        self.relaxtime = float( config['relaxtime'] )
+        self.runtime = float( config['runtime'] )
         # figure counter for plotting
         self.figures = 0
 
     def randomPos(self):
-        # T/Tmax = iniTemp, where Tmax = 1/4 omegasq (L/2)^2
+        # T/Tmax = iniTemp, where Tmax = 2 * 2 * 1/4 omegasq (L/2)^2
         corr = math.sqrt( self.iniTemp )
         if self.config['debug'] == 'True':
             print "temperature scaling correction ", corr
@@ -71,7 +97,7 @@ class SHO(NaiveSimulation):
         # initial velocity is determined by total energy + initial position
         # FIXME only works in 1d
         totEn = 0.5 * self.omegasq * (self.L / 2)**2 * self.iniTemp
-        self.vel[0][:] = np.array( [math.sqrt(2*(totEn - self.potEn()))] )
+        self.vel[0][:] = np.array( [(1 - 2 * (np.random.random() < 0.5)) * math.sqrt(2*(totEn - self.potEn()))] )
         if self.config['debug'] == 'True':
             print 'position after initialization', self.pos
             print 'velocity after initialization', self.vel
@@ -79,6 +105,25 @@ class SHO(NaiveSimulation):
             print 'kinetic energy after initialization',   self.kinEn()
             print 'total energy from temperature scaling ', totEn
             print 'instanteneous temperature after initialization ', self.temp()
+
+    # assign initial position and velocity to the particle
+    def setInitial(self, pos, vel):
+        # check conservation of energy
+        energy    = 0.5 * self.omegasq * pos ** 2 + 0.5 * vel ** 2
+        maxEnergy = 0.5 * self.omegasq * (self.L / 2) ** 2
+        if energy > maxEnergy:
+            return 1            # can't initialize these coordinates
+        else:
+            self.pos[0][:] = np.array([ pos ])
+            self.vel[0][:] = np.array([ vel ])
+            if self.config['debug'] == 'True':
+                print 'position after initialization', self.pos
+                print 'velocity after initialization', self.vel
+                print 'potential energy after initialization',  self.potEn()
+                print 'kinetic energy after initialization',    self.kinEn()
+                print 'total energy from temperature scaling ', self.en()
+                print 'instanteneous temperature after initialization ', self.temp()
+            return 0            # initializaton went okay
 
     # save current conditions as initial for the exact solution
     def initializeExact(self):
@@ -136,7 +181,6 @@ class SHO(NaiveSimulation):
     def meanPotEn(self):
         return self.potEnArray.mean()
 
-    # TODO
     # Plotting
 
     # scatter plot of coordinates dim1 vs dim2 at one time
@@ -193,9 +237,8 @@ class SHO(NaiveSimulation):
                 linestyle = '-', marker = 'o', color = 'r')
         pb.axhline(y = self.meanTemp() / self.tempMax,
                 linestyle = '--',  color='b')
-        if self.config['debug'] == 'True':
-            pb.axhline(y = self.iniTemp,
-                    linestyle = '--',  color='k')
+        pb.axhline(y = self.iniTemp,
+                linestyle = '--',  color='k')
         pb.title("Instanteneous temperature (red) and Mean Temperature (blue)")
         pb.xlabel("t/T")
         pb.ylabel("Inst Temp / Max Temp")
@@ -236,26 +279,3 @@ class SHO(NaiveSimulation):
         np.savetxt('%s_%s.txt' % (fname, 'vel'),  self.velArray    )
         np.savetxt('%s_%s.txt' % (fname, 'temp'), self.tempArray   )
         np.savetxt('%s_%s.txt' % (fname, 'samT'), self.sampleTArray)
-
-    def run(self, runtime = 0.0, relaxtime = 0.0):
-        if runtime   == 0.0: runtime   = self.runtime
-        if relaxtime == 0.0: relaxtime = self.relaxtime
-        self.initialize()
-        self.evolve( relaxtime )
-        self.resetStatistics()
-        if self.config['debug'] == 'True':
-            print "Number of sample steps after reset: ", self.samplesteps
-        self.initializeExact()
-        self.evolve( runtime )
-        self.calculateExact()
-        if self.config['batchmode'] == 'False':
-            self.printResults()
-            self.plotTemp()
-            self.plotPotEn(1)
-            self.plotTrajectories(1)
-            self.plotPhaseSpace(1)
-            self.showPlots()
-        if self.config['writeout'] == 'True':
-            self.writeObservables()
-
-

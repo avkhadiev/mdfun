@@ -25,8 +25,8 @@ class NaiveSimulation(object):
         self.dt          = float(config['dt'])
         self.dtsq        = self.dt ** 2
         self.sampleint   = float(config['sampleint'])
-        self.relaxtime   = float(config['relaxtime'])
         self.runtime     = float(config['runtime'])
+        self.relaxtime   = float(config['relaxtime'])
         self.tArray      = np.array([self.t])
         self.sampleTArray= np.array([])
         #objects

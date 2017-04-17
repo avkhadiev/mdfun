@@ -2,6 +2,7 @@
 
 from simulations import sho, mcsho
 import numpy as np
+import pylab as pb
 
 def parse(config_string):
     config = dict(item.split("=") for item in config_string.split(":"))
@@ -16,25 +17,122 @@ def run( sim, name, config, verbose, debug ):
     config['debug']   = str(debug)
     if sim == "sho":
         simulation = sho.SHO(name, config)
-        simulation.run()
-    if sim == "mcsho":
-        simulation = mcsho.MCMetropolis(name)
-        MCNormTest( simulation )
+        if MDRun( simulation ):
+            # if energy too high
+            print "specified initial coordinates are not allowed: maximum energy exceeded"
+    elif sim == "mcsho_test_basic":
+        simulation = mcsho.MCMetropolis( name, config )
+        MCBasicTest( simulation )
+    elif sim == "mcsho_test_norm":
+        MCNormTest()
+    elif sim == "mcsho_train":
+        simulation = mcsho.MCMetropolis( name, config )
+        (stepX, stepP) = MCTrain( simulation )
+        print "stepX: ", stepX
+        print "stepP: ", stepP
     else:
         print "%s is an unknown simulation" % sim
 
 # test the MC sho
 # graph sampled x0, p0 points
 # graph the step size changes
-# calculate the normalization and print it
-def MCNormTest( simulation ):
+# calculate the normalization and return it
+def MCBasicTest( simulation ):
+    npoints = int(simulation.config['npoints'])
     simulation.sampleFirst()
-    while (simulation.newAcc < 100) or (simulation.trials < 100000):
-        simulation.evolve(30)
-        simulation.adjustRatio()
-    print "MC SHO test: normalization C_0 is ", simulation.normalization
-    np.savetxt('%s_%s.txt' % (simulation.name, "x0v0"), simulation.points)
+    simulation.evolve(1000)
+    simulation.reset()
+    while (simulation.totAcc < npoints):
+        simulation.evolve(1)
+    if simulation.config['batchmode'] == 'False':
+        print "MC SHO test: normalization C_0 is ", simulation.normalization()
+        print "Points sampled: ", simulation.totAcc
+        print "Frequency sum: ",  simulation.freq.sum()
+        simulation.plotPhaseSpace()
+        simulation.plotRatios()
+        simulation.plotSteps()
+        simulation.plotEnergy()
+        simulation.showPlots()
+    return simulation.normalization()
 
+# prints normalization as a function of input temperature
+def MCNormTest():
+    iniTempArr = np.linspace(0.1, 1, 10)
+    norms = np.array([])
+    for iniTemp in iniTempArr:
+        name    = "mcshoNormTest" + "_iniTemp_" + str(iniTemp)
+        config  = parse("stepP=0.1:stepX=0.1:npoints=100000:batchmode=True:debug=False")
+        config['iniTemp'] = iniTemp
+        simulation = mcsho.MCMetropolis( name, config )
+        norm = MCBasicTest( simulation )
+        norms = np.append( norms, norm )
+    tmax = simulation.tempMax
+    pb.figure(1)
+    pb.title("C_0 as a function of T, simulation (red) vs. kbT (black)")
+    pb.xlabel("T/TempMax")
+    pb.ylabel("C_0")
+    pb.grid(True)
+    pb.plot( iniTempArr, norms, linestyle = 'None', marker = 'o', color = 'r' )
+    pb.plot( iniTempArr, iniTempArr * tmax, linestyle = '-', color = 'k' )
+    pb.show()
+
+# test the MC sho
+# graph sampled x0, p0 points
+# graph the step size changes
+# calculate the normalization and print it
+def MCTrain( simulation ):
+    npoints = int(simulation.config['npoints'])
+    simulation.config['adjustStep'] = 'True'
+    simulation.sampleFirst()
+    # relax the system first
+    simulation.evolve(100)
+    simulation.reset()
+    while (simulation.totAcc < npoints):
+        simulation.evolve(1)
+    # return steps that are good to obtain a ratio of ~ 0.5
+    stepX = simulation.stepsX.mean() / (simulation.L / 2)
+    stepP = simulation.stepsP.mean() / (simulation.pRef )
+    return (stepX, stepP)
+
+# runs an MD simulation
+# according to the config
+def MDRun( simulation, runtime = 0.0, relaxtime = 0.0 ):
+    if runtime   <= 0.0: runtime   = simulation.runtime
+    if relaxtime <= 0.0: relaxtime = simulation.relaxtime
+    if simulation.config['setInitial'] == 'True':
+        x0 = float(simulation.config['x0'])
+        p0 = float(simulation.config['p0'])
+        if simulation.setInitial( x0, p0 ):
+            # if energy is too high
+            return 1
+        # FIXME --- maybe correct iniTemp specification is up the user
+        # ( provided by the MC simulation )
+        # calculate new initial temperature
+        # (relative to Tmax = 2 * 1/4 m w^2 (L/2)^2)
+        # avgEn = 2 * 0.5 * simulation.en()
+        # simulation.iniTemp = avgEn / simulation.tempMax
+    else:
+        simulation.initialize()
+        simulation.evolve( relaxtime )
+        simulation.resetStatistics()
+    simulation.initializeExact()
+    simulation.evolve( runtime )
+    if simulation.config['calculateExact'] == 'True':
+        simulation.calculateExact()
+    if simulation.config['batchmode'] == 'False':
+            simulation.printResults()
+            simulation.plotTemp()
+            if simulation.config['calculateExact'] == 'True':
+                overlayExact = 1
+            else:
+                overlayExact = 0
+            simulation.plotPotEn( overlayExact )
+            simulation.plotTrajectories( overlayExact )
+            simulation.plotPhaseSpace( overlayExact )
+            simulation.showPlots()
+    if simulation.config['writeout'] == 'True':
+        simulation.writeObservables()
+    return 0
 
 def time_reversal( sim, config, verbose, debug ):
     if (verbose):

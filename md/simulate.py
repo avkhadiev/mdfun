@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from simulations import sho, mcsho
+from simulations import sho, mcsho, rotating
 import numpy as np
 import pylab as pb
 
@@ -20,6 +20,9 @@ def run( sim, name, config, verbose, debug ):
         if MDRun( simulation ):
             # if energy too high
             print "specified initial coordinates are not allowed: maximum energy exceeded"
+    elif sim == "barbell":
+        simulation = rotating.Barbell( name, config )
+        MDRun( simulation )
     elif sim == "mcsho_test_basic":
         simulation = mcsho.MCMetropolis( name, config )
         MCBasicTest( simulation )
@@ -39,6 +42,14 @@ def run( sim, name, config, verbose, debug ):
 # calculate the normalization and return it
 def MCBasicTest( simulation ):
     npoints = int(simulation.config['npoints'])
+    (stepX, stepP) = MCTrain( simulation )
+    print "Training done:"                      # training to get 50% acc ratio
+    print "stepX: ", stepX
+    print "stepP: ", stepP
+    simulation.reset()
+    simulation.config['adjustStep'] = 'False'   # no step adjustment
+    simulation.stepX = stepX                    # assign steps from training
+    simulation.stepP = stepP
     simulation.sampleFirst()
     simulation.evolve(1000)
     simulation.reset()
@@ -53,6 +64,8 @@ def MCBasicTest( simulation ):
         simulation.plotSteps()
         simulation.plotEnergy()
         simulation.showPlots()
+    if simulation.config['writeout'] == 'True':
+        simulation.writeout()
     return simulation.normalization()
 
 # prints normalization as a function of input temperature
@@ -96,42 +109,35 @@ def MCTrain( simulation ):
 
 # runs an MD simulation
 # according to the config
-def MDRun( simulation, runtime = 0.0, relaxtime = 0.0 ):
-    if runtime   <= 0.0: runtime   = simulation.runtime
-    if relaxtime <= 0.0: relaxtime = simulation.relaxtime
+def MDRun( simulation, runtime = -1, relaxtime = -1 ):
+    if runtime   <  0.0: runtime   = simulation.runtime
+    if relaxtime <  0.0: relaxtime = simulation.relaxtime
     if simulation.config['setInitial'] == 'True':
         x0 = float(simulation.config['x0'])
         p0 = float(simulation.config['p0'])
         if simulation.setInitial( x0, p0 ):
             # if energy is too high
             return 1
-        # FIXME --- maybe correct iniTemp specification is up the user
-        # ( provided by the MC simulation )
-        # calculate new initial temperature
-        # (relative to Tmax = 2 * 1/4 m w^2 (L/2)^2)
-        # avgEn = 2 * 0.5 * simulation.en()
-        # simulation.iniTemp = avgEn / simulation.tempMax
     else:
         simulation.initialize()
         simulation.evolve( relaxtime )
         simulation.resetStatistics()
     simulation.initializeExact()
-    simulation.evolve( runtime )
+    simulation.evolve( runtime )                        # in units of T
     if simulation.config['calculateExact'] == 'True':
         simulation.calculateExact()
-    if simulation.config['batchmode'] == 'False':
-            simulation.printResults()
-            simulation.plotTemp()
-            if simulation.config['calculateExact'] == 'True':
-                overlayExact = 1
-            else:
-                overlayExact = 0
-            simulation.plotPotEn( overlayExact )
-            simulation.plotTrajectories( overlayExact )
-            simulation.plotPhaseSpace( overlayExact )
-            simulation.showPlots()
     if simulation.config['writeout'] == 'True':
         simulation.writeObservables()
+    if simulation.config['batchmode'] == 'False':
+        simulation.printResults()
+        if simulation.config['calculateExact'] == 'True':
+            overlayExact = 1
+        else:
+            overlayExact = 0
+        simulation.plotPotEn( overlayExact )
+        simulation.plotTrajectories( overlayExact )
+        simulation.plotPhaseSpace( overlayExact )
+        simulation.showPlots()
     return 0
 
 def time_reversal( sim, config, verbose, debug ):

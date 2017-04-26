@@ -92,7 +92,7 @@ class NaiveSimulation(object):
     # v(t + 0.5 dt) = v(t) + 1/2 dt a(t)
     # x(t + dt)     = x(t) + dt v(t + 0.5 dt)
     # a(t + dt)     = 1/m F( x(t + dt))
-    # v(t)          = v(t + 0.5 dt) + 1/2 dt a(t + dt)
+    # v(t + dt)     = v(t + 0.5 dt) + 1/2 dt a(t + dt)
     def velocityVerlet(self):
         self.vel += 0.5 * self.dt * self.acc
         self.pos += self.dt * self.vel
@@ -133,8 +133,7 @@ class NaiveSimulation(object):
 
     # evolves the system a specified amount of time
     def evolve(self, time):
-        steps = int(abs(time/self.dt))
-        self.acc = self.force()
+        steps       = int(abs(time/self.dt))
         for istep in xrange(steps):
             self.integrate()
             self.t      += self.dt
@@ -151,7 +150,6 @@ class NaiveSimulation(object):
 
     def reverseTime(self):
         self.dt = -self.dt
-
 
     # STATISTICS
     def resetObservales(self):

@@ -1,0 +1,6 @@
+echo "I"
+echo "am"
+echo "tired"
+echo "of"
+echo "this"
+echo "semester."

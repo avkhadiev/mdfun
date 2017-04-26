@@ -2,6 +2,7 @@
 
 import numpy as np
 import pylab as pb
+import os
 import math
 
 class MCMetropolis(object):
@@ -18,13 +19,19 @@ class MCMetropolis(object):
         # (m = kB = 1)
         if 'iniTemp'    not in config.keys(): config['iniTemp'] = 0.10
         if 'npoints'    not in config.keys(): config['npoints'] = 10000
-        # stepX is put in relative to L, stepP relative to L/T
+        # stepX is put in relative to L/2, stepP relative to omega * L/2
         # this will multiplied by reference values automatically
         if 'stepP'      not in config.keys(): config['stepP']   = 2.0
         if 'stepX'      not in config.keys(): config['stepX']   = 2.0
         if 'adjustStep' not in config.keys(): config['adjustStep'] = 'False'
         if 'nadjst'     not in config.keys(): config['nadjst']  = 20
         if 'batchmode'  not in config.keys(): config['batchmode'] = 'False'
+        if 'writeout'   not in config.keys(): config['writeout']  = 'False'
+        if 'outdir'     not in config.keys():
+            outdirname = self.name
+            os.makedirs(outdirname)
+            outdir     = os.path.join( os.getcwd(), outdirname )
+            config['outdir'] = outdir
         if (config['debug'] == 'True'):
             print "SHO Monte-Carlo may have modified the configuration."
             print "The current configuration is:"
@@ -59,6 +66,7 @@ class MCMetropolis(object):
         self.iniEnergy  = 0.                        # initial energy
         self.enArray    = np.array([])              # monitoring total energy
         self.samplesteps= np.array([])              # steps w sampled ratios
+        self.outdir     = config['outdir']          # output directory
 
     # uses an RNG to sample the first pair (p, x)
     # allowed by the input temperature PE_max / kT, omegasq, and size of box L
@@ -250,7 +258,7 @@ class MCMetropolis(object):
                 linestyle = '--', color = 'k')
         pb.axvline(-1.0,
                 linestyle = '--', color = 'k')
-        # Total energy given the initial temperature
+        # Average energy corresponding to the initial temperature
         pb.axhline(1.0 * corr,
                 linestyle = '--', color = 'b')
         pb.axhline(-1.0 * corr,
@@ -259,8 +267,6 @@ class MCMetropolis(object):
                 linestyle = '--', color = 'b')
         pb.axvline(-1.0 * corr,
                 linestyle = '--', color = 'b')
-        np.savetxt("%s_%s.txt" % (self.name, "x0"), x)
-        np.savetxt("%s_%s.txt" % (self.name, "v0"), p)
         # Trajectories
         self.figures += 1
         f, axarr = pb.subplots(2, sharex=True)
@@ -322,4 +328,14 @@ class MCMetropolis(object):
 
     def showPlots(self):
         pb.show()
+
+    def writeout(self):
+        x    = self.points[::2]
+        p    = self.points[1::2]
+        freq = np.array( self.freq )
+        os.chdir( self.outdir )                             # cd outdir
+        np.savetxt("%s_%s.txt" % (self.name, "x0"), x   )
+        np.savetxt("%s_%s.txt" % (self.name, "v0"), p   )
+        np.savetxt("%s_%s.txt" % (self.name, "fr"), freq)
+
 

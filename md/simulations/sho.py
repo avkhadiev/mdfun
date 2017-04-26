@@ -4,12 +4,12 @@ from mdsimulation import NaiveSimulation
 import numpy as np
 import pylab as pb
 import math
+import os
 
 class SHO(NaiveSimulation):
     """A class for an MD simulation of a simple harmonic oscillator"""
 
     # creates an instance of a simulation class
-    # FIXME change to include customizable name?
     def __init__(self, name, config):
         # general configs
         if 'N'          not in config.keys(): config['N']          = 1
@@ -17,11 +17,11 @@ class SHO(NaiveSimulation):
         if 'L'          not in config.keys(): config['L']          = 1.0
         # temperature is specified as T / Tmax, where Tmax = 1/4 omegasq (L/2)^2
         # (m = kB = 1)
-        if 'iniTemp'    not in config.keys(): config['iniTemp']    = 0.25
+        if 'iniTemp'    not in config.keys(): config['iniTemp']    = 0.01
         if 'batchmode'  not in config.keys(): config['batchmode']  = 'False'
         if 'writeout'   not in config.keys(): config['writeout']   = 'False'
         if 'calculateExact' not in config.keys():
-            config['calculateExact'] == 'True'
+            config['calculateExact'] = 'True'
         if 'setInitial' not in config.keys():
             config['setInitial'] = 'False'
         else:
@@ -30,6 +30,9 @@ class SHO(NaiveSimulation):
                 config['p0'] = 0.0
         if 'integration' not in config.keys():
             config['integration']='velocityVerlet'
+        if 'outdir' not in config.keys():
+            config['outdir'] = 'sho_output'
+        self.outdir = config['outdir']
         # SHO-specific configs
         if 'omegasq'    not in config.keys():
             self.omegasq = 1.0
@@ -38,10 +41,6 @@ class SHO(NaiveSimulation):
         self.omega = math.sqrt( self.omegasq )
         self.kinEnArray = np.array([])
         self.potEnArray = np.array([])
-        # maximum INSTANTENEOUS temperature
-        self.tempMax      = 2 * 0.25  * self.omegasq * (self.L / 2)**2
-        self.xmax         = 0.0
-        self.pmax         = 0.0
         # x(t) = A exp( i omega t) + B exp( - i omega t)
         self.A = 0.0 + 0.0j
         self.B = 0.0 + 0.0j
@@ -56,13 +55,14 @@ class SHO(NaiveSimulation):
         else:
             config['runtime'] = float(config['runtime']) * self.T
         if 'dt'         not in config.keys():
-            config['dt']        = 0.001 * self.T
+            config['dt']        = 0.005 * self.T
         else:
             config['dt'] = float(config['dt']) * self.T
+        # sample observables every n steps
         if 'sampleint'  not in config.keys():
-            config['sampleint'] = 0.1 * self.T
+            config['sampleint'] = 10
         else:
-            config['sampleint'] = float(config['sampleint']) * self.T
+            config['sampleint'] = int(config['sampleint'])
         self.relaxtime = float( config['relaxtime'] )
         self.runtime = float( config['runtime'] )
         if (config['debug'] == 'True'):
@@ -71,6 +71,10 @@ class SHO(NaiveSimulation):
             print( config )
             print "\n"
         super(SHO, self).__init__(name, config)
+        # maximum INSTANTENEOUS temperature
+        self.tempMax      = 2 * 0.25  * self.omegasq * (self.L / 2)**2
+        self.xmax         = 0.0
+        self.pmax         = 0.0
         # to store information for exact solution
         self.iniEn       = 0.0
         self.iniPos = np.zeros([self.ndim, self.N])
@@ -95,7 +99,6 @@ class SHO(NaiveSimulation):
     def initialize(self):
         self.randomPos()
         # initial velocity is determined by total energy + initial position
-        # FIXME only works in 1d
         totEn = 0.5 * self.omegasq * (self.L / 2)**2 * self.iniTemp
         self.vel[0][:] = np.array( [(1 - 2 * (np.random.random() < 0.5)) * math.sqrt(2*(totEn - self.potEn()))] )
         if self.config['debug'] == 'True':
@@ -271,11 +274,11 @@ class SHO(NaiveSimulation):
 
     # writeout observables to file
     def writeObservables(self):
+        # go to output directory and save output in a subfolder
         fname = self.name
-        np.savetxt('%s_%s.txt' % (fname, 'ken'),  self.kinEnArray  )
-        np.savetxt('%s_%s.txt' % (fname, 'pen'),  self.potEnArray  )
-        np.savetxt('%s_%s.txt' % (fname, 'en'),   self.enArray     )
-        np.savetxt('%s_%s.txt' % (fname, 'pos'),  self.posArray    )
+        os.chdir( self.outdir )
+        subfold = os.path.join(self.outdir, fname)
+        os.mkdir(subfold)
+        os.chdir(subfold)
         np.savetxt('%s_%s.txt' % (fname, 'vel'),  self.velArray    )
-        np.savetxt('%s_%s.txt' % (fname, 'temp'), self.tempArray   )
         np.savetxt('%s_%s.txt' % (fname, 'samT'), self.sampleTArray)
